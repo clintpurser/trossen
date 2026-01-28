@@ -85,7 +85,7 @@ class DynamixelDriver:
         self._baud_rate = baud_rate
         self._port_handler: Optional[PortHandler] = None
         self._packet_handler: Optional[PacketHandler] = None
-        self._lock = threading.RLock()  # Use RLock for reentrant locking
+        self._lock = threading.Lock()  # Use Lock to prevent concurrent access
         self._is_open = False
 
     @property
