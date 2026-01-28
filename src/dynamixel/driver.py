@@ -1,6 +1,7 @@
 """Dynamixel SDK driver for ViperX-300s arm."""
 
 import threading
+import time
 from typing import Dict, List, Optional
 
 from dynamixel_sdk import (
@@ -8,6 +9,10 @@ from dynamixel_sdk import (
     PacketHandler,
     COMM_SUCCESS,
 )
+
+# Retry configuration for transient port errors
+MAX_RETRIES = 3
+RETRY_DELAY = 0.01  # 10ms
 
 from .constants import (
     PROTOCOL_VERSION,
@@ -131,6 +136,13 @@ class DynamixelDriver:
         if not self._is_open:
             raise DynamixelError("Driver not open")
 
+    def _clear_port(self) -> None:
+        """Clear any stale port state by resetting the is_using flag."""
+        if self._port_handler is not None:
+            # The SDK's is_using_ is private, but we can clear it by
+            # waiting briefly if the port appears busy
+            self._port_handler.is_using_ = False
+
     def enable_torque(self, motor_ids: Optional[List[int]] = None) -> None:
         """Enable torque on specified motors.
 
@@ -184,6 +196,7 @@ class DynamixelDriver:
         """
         with self._lock:
             self._check_open()
+            self._clear_port()  # Clear any stale port state
 
             # Read positions individually for reliability
             # read4ByteTxRx returns (data, result, error)
@@ -192,13 +205,21 @@ class DynamixelDriver:
                 config = VIPERX_300S_JOINTS[joint_idx]
                 primary_id = config.motor_ids[0]
 
-                data, result, error = self._packet_handler.read4ByteTxRx(
-                    self._port_handler, primary_id, ADDR_PRESENT_POSITION
-                )
-                if result != COMM_SUCCESS or error != 0:
+                # Retry logic for transient errors
+                last_error = None
+                for attempt in range(MAX_RETRIES):
+                    data, result, error = self._packet_handler.read4ByteTxRx(
+                        self._port_handler, primary_id, ADDR_PRESENT_POSITION
+                    )
+                    if result == COMM_SUCCESS and error == 0:
+                        break
+                    last_error = self._packet_handler.getTxRxResult(result)
+                    if attempt < MAX_RETRIES - 1:
+                        self._clear_port()
+                        time.sleep(RETRY_DELAY)
+                else:
                     raise DynamixelError(
-                        f"Failed to read position for motor {primary_id}: "
-                        f"{self._packet_handler.getTxRxResult(result)}"
+                        f"Failed to read position for motor {primary_id}: {last_error}"
                     )
 
                 positions.append(ticks_to_radians(data))
@@ -248,15 +269,23 @@ class DynamixelDriver:
         """
         with self._lock:
             self._check_open()
+            self._clear_port()
 
             # Read moving status from each motor individually
             # read1ByteTxRx returns (data, result, error)
             for motor_id in PRIMARY_MOTOR_IDS:
-                data, result, error = self._packet_handler.read1ByteTxRx(
-                    self._port_handler, motor_id, ADDR_MOVING
-                )
-                if result != COMM_SUCCESS or error != 0:
-                    # Skip motors that fail to respond
+                # Retry logic for transient errors
+                for attempt in range(MAX_RETRIES):
+                    data, result, error = self._packet_handler.read1ByteTxRx(
+                        self._port_handler, motor_id, ADDR_MOVING
+                    )
+                    if result == COMM_SUCCESS and error == 0:
+                        break
+                    if attempt < MAX_RETRIES - 1:
+                        self._clear_port()
+                        time.sleep(RETRY_DELAY)
+                else:
+                    # Skip motors that fail to respond after retries
                     continue
                 if data:
                     return True
@@ -327,16 +356,22 @@ class DynamixelDriver:
         """
         with self._lock:
             self._check_open()
+            self._clear_port()
 
-            # read4ByteTxRx returns (data, result, error)
-            data, result, error = self._packet_handler.read4ByteTxRx(
-                self._port_handler, GRIPPER_MOTOR_ID, ADDR_PRESENT_POSITION
-            )
-            if result != COMM_SUCCESS or error != 0:
-                raise DynamixelError(
-                    f"Failed to read gripper position: "
-                    f"{self._packet_handler.getRxPacketError(error)}"
+            # Retry logic for transient errors
+            last_error = None
+            for attempt in range(MAX_RETRIES):
+                data, result, error = self._packet_handler.read4ByteTxRx(
+                    self._port_handler, GRIPPER_MOTOR_ID, ADDR_PRESENT_POSITION
                 )
+                if result == COMM_SUCCESS and error == 0:
+                    break
+                last_error = self._packet_handler.getRxPacketError(error)
+                if attempt < MAX_RETRIES - 1:
+                    self._clear_port()
+                    time.sleep(RETRY_DELAY)
+            else:
+                raise DynamixelError(f"Failed to read gripper position: {last_error}")
 
             return ticks_to_radians(data)
 
@@ -367,15 +402,23 @@ class DynamixelDriver:
         """
         with self._lock:
             self._check_open()
+            self._clear_port()
 
-            # read1ByteTxRx returns (data, result, error)
-            data, result, error = self._packet_handler.read1ByteTxRx(
-                self._port_handler, GRIPPER_MOTOR_ID, ADDR_MOVING
-            )
-            if result != COMM_SUCCESS or error != 0:
+            # Retry logic for transient errors
+            last_error = None
+            for attempt in range(MAX_RETRIES):
+                data, result, error = self._packet_handler.read1ByteTxRx(
+                    self._port_handler, GRIPPER_MOTOR_ID, ADDR_MOVING
+                )
+                if result == COMM_SUCCESS and error == 0:
+                    break
+                last_error = self._packet_handler.getRxPacketError(error)
+                if attempt < MAX_RETRIES - 1:
+                    self._clear_port()
+                    time.sleep(RETRY_DELAY)
+            else:
                 raise DynamixelError(
-                    f"Failed to read gripper moving status: "
-                    f"{self._packet_handler.getRxPacketError(error)}"
+                    f"Failed to read gripper moving status: {last_error}"
                 )
 
             return bool(data)
