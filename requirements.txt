@@ -1,4 +1,3 @@
-
 viam-sdk==0.67.0
-
 typing-extensions
+dynamixel-sdk>=3.7.31

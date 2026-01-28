@@ -3,7 +3,7 @@
   "module_id": "clint:trossen",
   "visibility": "public",
   "url": "",
-  "description": "Modular arm component: viperx-300s",
+  "description": "Viam module for Trossen ViperX-300s arm and gripper",
   "applications": null,
   "markdown_link": "README.md",
   "entrypoint": "dist/main",
