@@ -1,6 +1,5 @@
 {
   "name": "vx300s",
-  "kinematic_param_type": "SVA",
   "links": [
     {
       "id": "base_link",
@@ -65,9 +64,10 @@
         "z": 0
       },
       "geometry": {
-        "type": "cylinder",
-        "r": 30,
-        "l": 100
+        "type": "box",
+        "x": 60,
+        "y": 60,
+        "z": 100
       }
     },
     {
@@ -117,8 +117,8 @@
         "y": 1,
         "z": 0
       },
-      "min": -101,
-      "max": 101
+      "min": -111,
+      "max": 111
     },
     {
       "id": "elbow",
@@ -129,8 +129,8 @@
         "y": 1,
         "z": 0
       },
-      "min": -101,
-      "max": 92
+      "min": -106,
+      "max": 97
     },
     {
       "id": "forearm_roll",

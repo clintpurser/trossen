@@ -11,11 +11,12 @@ from dynamixel_sdk import (
 )
 
 # Retry configuration for transient port errors
-MAX_RETRIES = 3
-RETRY_DELAY = 0.01  # 10ms
+MAX_RETRIES = 5
+RETRY_DELAY = 0.1  # 100ms - longer delay to let port settle
 
 from .constants import (
     PROTOCOL_VERSION,
+    ADDR_OPERATING_MODE,
     ADDR_TORQUE_ENABLE,
     ADDR_GOAL_POSITION,
     ADDR_PRESENT_POSITION,
@@ -27,6 +28,7 @@ from .constants import (
     GRIPPER_MOTOR_ID,
     VIPERX_300S_JOINTS,
     NUM_JOINTS,
+    POSITION_CONTROL_MODE,
 )
 from .conversions import ticks_to_radians, radians_to_ticks
 
@@ -147,18 +149,30 @@ class DynamixelDriver:
     def _clear_port(self) -> None:
         """Clear any stale port state by resetting the is_using flag and flushing."""
         if self._port_handler is not None:
+            # Log current state
+            is_using = getattr(self._port_handler, 'is_using_', 'N/A')
+            _logger.debug(f"Clearing port, current is_using_={is_using}")
+
             # Try to clear the SDK's internal is_using flag if it exists
             try:
                 self._port_handler.is_using_ = False
             except AttributeError:
-                pass
+                _logger.warning("is_using_ attribute not found on port handler")
+
             # Also try to clear the port buffer
             try:
                 self._port_handler.clearPort()
-            except (AttributeError, Exception):
-                pass
+            except AttributeError:
+                _logger.debug("clearPort() not available")
+            except Exception as e:
+                _logger.warning(f"clearPort() failed: {e}")
+
             # Small delay to let the port settle
-            time.sleep(0.001)
+            time.sleep(0.005)
+
+            # Verify it was cleared
+            is_using_after = getattr(self._port_handler, 'is_using_', 'N/A')
+            _logger.debug(f"After clearing, is_using_={is_using_after}")
 
     def enable_torque(self, motor_ids: Optional[List[int]] = None) -> None:
         """Enable torque on specified motors.
@@ -395,10 +409,129 @@ class DynamixelDriver:
                         f"Failed to set acceleration on motor {motor_id}"
                     )
 
+    def reboot_motor(self, motor_id: int) -> None:
+        """Reboot a motor to clear hardware errors.
+
+        Args:
+            motor_id: Motor ID to reboot
+        """
+        with self._lock:
+            self._check_open()
+            self._clear_port()
+
+            for attempt in range(MAX_RETRIES):
+                result, error = self._packet_handler.reboot(
+                    self._port_handler, motor_id
+                )
+                if result == COMM_SUCCESS:
+                    _logger.info(f"Rebooted motor {motor_id} to clear hardware errors")
+                    # Give the motor time to reboot
+                    time.sleep(0.5)
+                    return
+                if attempt < MAX_RETRIES - 1:
+                    self._clear_port()
+                    time.sleep(RETRY_DELAY)
+
+            _logger.warning(
+                f"Failed to reboot motor {motor_id}: "
+                f"{self._packet_handler.getTxRxResult(result)}"
+            )
+
+    def read_operating_mode(self, motor_id: int) -> int:
+        """Read the operating mode of a motor.
+
+        Args:
+            motor_id: Motor ID to read from
+
+        Returns:
+            Operating mode value (3 = Position Control, 4 = Extended Position, 16 = PWM)
+        """
+        with self._lock:
+            self._check_open()
+            self._clear_port()
+
+            last_error = None
+            for attempt in range(MAX_RETRIES):
+                data, result, error = self._packet_handler.read1ByteTxRx(
+                    self._port_handler, motor_id, ADDR_OPERATING_MODE
+                )
+                if result == COMM_SUCCESS and error == 0:
+                    return data
+                # Hardware error - try to return last known mode (Position Control)
+                if error != 0:
+                    _logger.warning(
+                        f"Hardware error reading operating mode for motor {motor_id}: "
+                        f"{self._packet_handler.getRxPacketError(error)}. "
+                        f"Assuming Position Control Mode."
+                    )
+                    return POSITION_CONTROL_MODE
+                last_error = self._packet_handler.getTxRxResult(result)
+                if attempt < MAX_RETRIES - 1:
+                    self._clear_port()
+                    time.sleep(RETRY_DELAY)
+
+            raise DynamixelError(
+                f"Failed to read operating mode for motor {motor_id}: {last_error}"
+            )
+
+    def set_operating_mode(self, motor_id: int, mode: int) -> None:
+        """Set the operating mode of a motor.
+
+        IMPORTANT: Torque must be disabled before changing operating mode.
+
+        Args:
+            motor_id: Motor ID to configure
+            mode: Operating mode (3 = Position Control, 4 = Extended Position, 16 = PWM)
+        """
+        with self._lock:
+            self._check_open()
+            self._clear_port()
+
+            for attempt in range(MAX_RETRIES):
+                result, error = self._packet_handler.write1ByteTxRx(
+                    self._port_handler, motor_id, ADDR_OPERATING_MODE, mode
+                )
+                if result == COMM_SUCCESS:
+                    _logger.info(f"Set motor {motor_id} operating mode to {mode}")
+                    return
+                if attempt < MAX_RETRIES - 1:
+                    self._clear_port()
+                    time.sleep(RETRY_DELAY)
+
+            raise DynamixelError(
+                f"Failed to set operating mode for motor {motor_id}: "
+                f"{self._packet_handler.getTxRxResult(result)}"
+            )
+
     # Gripper-specific methods
 
     def enable_gripper_torque(self) -> None:
-        """Enable torque on the gripper motor."""
+        """Enable torque on the gripper motor and set motion profile.
+
+        This method clears any hardware errors, ensures the gripper is in
+        Position Control Mode, and enables torque.
+        """
+        # Reboot the motor to clear any hardware errors (e.g., from overload)
+        _logger.info(f"Rebooting gripper motor {GRIPPER_MOTOR_ID} to clear any errors")
+        self.reboot_motor(GRIPPER_MOTOR_ID)
+
+        # Disable torque to allow mode change if needed
+        self.disable_torque([GRIPPER_MOTOR_ID])
+
+        # Check current operating mode
+        current_mode = self.read_operating_mode(GRIPPER_MOTOR_ID)
+        _logger.info(f"Gripper motor {GRIPPER_MOTOR_ID} current operating mode: {current_mode}")
+
+        # Set to Position Control Mode if not already
+        if current_mode != POSITION_CONTROL_MODE:
+            _logger.info(f"Setting gripper to Position Control Mode ({POSITION_CONTROL_MODE})")
+            self.set_operating_mode(GRIPPER_MOTOR_ID, POSITION_CONTROL_MODE)
+
+        # Set profile velocity and acceleration for smooth motion
+        self.set_profile_velocity(100, [GRIPPER_MOTOR_ID])
+        self.set_profile_acceleration(50, [GRIPPER_MOTOR_ID])
+
+        # Enable torque
         self.enable_torque([GRIPPER_MOTOR_ID])
 
     def disable_gripper_torque(self) -> None:
@@ -435,34 +568,59 @@ class DynamixelDriver:
     def write_gripper_position(self, position: float) -> None:
         """Write goal position to gripper.
 
+        If the gripper has a hardware error (e.g., from overload), this method
+        will automatically reboot the motor to clear the error and retry.
+
         Args:
             position: Target position in radians
         """
-        with self._lock:
-            self._check_open()
-            self._clear_port()
+        ticks = radians_to_ticks(position)
 
-            ticks = radians_to_ticks(position)
-            for attempt in range(MAX_RETRIES):
-                result, error = self._packet_handler.write4ByteTxRx(
-                    self._port_handler, GRIPPER_MOTOR_ID, ADDR_GOAL_POSITION, ticks
-                )
-                if result == COMM_SUCCESS:
-                    break
-                if attempt < MAX_RETRIES - 1:
-                    self._clear_port()
-                    time.sleep(RETRY_DELAY)
-            else:
-                raise DynamixelError(
-                    f"Failed to write gripper position: "
-                    f"{self._packet_handler.getTxRxResult(result)}"
-                )
+        # Try to write position, with hardware error recovery
+        for recovery_attempt in range(2):  # Allow one recovery attempt
+            with self._lock:
+                self._check_open()
+                self._clear_port()
+
+                for attempt in range(MAX_RETRIES):
+                    result, error = self._packet_handler.write4ByteTxRx(
+                        self._port_handler, GRIPPER_MOTOR_ID, ADDR_GOAL_POSITION, ticks
+                    )
+                    if result == COMM_SUCCESS and error == 0:
+                        return  # Success
+                    # Hardware error detected - need to reboot
+                    if error != 0:
+                        _logger.warning(
+                            f"Gripper hardware error during position write: "
+                            f"{self._packet_handler.getRxPacketError(error)}. "
+                            f"Will reboot motor."
+                        )
+                        break  # Exit retry loop to do recovery
+                    if attempt < MAX_RETRIES - 1:
+                        self._clear_port()
+                        time.sleep(RETRY_DELAY)
+                else:
+                    # All retries exhausted without hardware error
+                    raise DynamixelError(
+                        f"Failed to write gripper position: "
+                        f"{self._packet_handler.getTxRxResult(result)}"
+                    )
+
+            # If we get here, we had a hardware error - try to recover
+            if recovery_attempt == 0:
+                _logger.info("Attempting gripper recovery: rebooting motor")
+                self.reboot_motor(GRIPPER_MOTOR_ID)
+                # Re-enable torque after reboot
+                self.enable_torque([GRIPPER_MOTOR_ID])
+
+        raise DynamixelError("Failed to write gripper position after recovery attempt")
 
     def is_gripper_moving(self) -> bool:
         """Check if gripper is currently moving.
 
         Returns:
-            True if gripper is moving, False otherwise
+            True if gripper is moving, False otherwise.
+            Returns False if hardware error (e.g., overload from gripping object).
         """
         with self._lock:
             self._check_open()
@@ -475,14 +633,20 @@ class DynamixelDriver:
                     self._port_handler, GRIPPER_MOTOR_ID, ADDR_MOVING
                 )
                 if result == COMM_SUCCESS and error == 0:
-                    break
-                last_error = self._packet_handler.getRxPacketError(error)
+                    return bool(data)
+                # Hardware error (e.g., overload from gripping) - gripper has stopped
+                if error != 0:
+                    _logger.warning(
+                        f"Gripper hardware error during is_moving check: "
+                        f"{self._packet_handler.getRxPacketError(error)}. "
+                        f"Assuming gripper stopped."
+                    )
+                    return False
+                last_error = self._packet_handler.getTxRxResult(result)
                 if attempt < MAX_RETRIES - 1:
                     self._clear_port()
                     time.sleep(RETRY_DELAY)
-            else:
-                raise DynamixelError(
-                    f"Failed to read gripper moving status: {last_error}"
-                )
 
-            return bool(data)
+            raise DynamixelError(
+                f"Failed to read gripper moving status: {last_error}"
+            )

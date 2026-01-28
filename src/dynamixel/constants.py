@@ -48,8 +48,8 @@ class JointConfig(NamedTuple):
 # For dual-motor joints (shoulder, elbow), both motors receive the same command
 VIPERX_300S_JOINTS: Dict[int, JointConfig] = {
     0: JointConfig("waist", [1], -180.0, 180.0),
-    1: JointConfig("shoulder", [2, 3], -101.0, 101.0),      # dual motor
-    2: JointConfig("elbow", [4, 5], -101.0, 92.0),          # dual motor
+    1: JointConfig("shoulder", [2, 3], -111.0, 111.0),      # dual motor (extended from -101/101)
+    2: JointConfig("elbow", [4, 5], -106.0, 97.0),          # dual motor (extended from -101/92)
     3: JointConfig("forearm_roll", [6], -180.0, 180.0),
     4: JointConfig("wrist_angle", [7], -107.0, 130.0),
     5: JointConfig("wrist_rotate", [8], -180.0, 180.0),

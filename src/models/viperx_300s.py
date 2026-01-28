@@ -39,8 +39,9 @@ class Viperx300s(Arm, EasyResource):
     This component provides joint-level control of the ViperX-300s 6-DOF arm
     via direct Dynamixel SDK communication.
 
-    For Cartesian motion (move_to_position, get_end_position), use Viam's
-    motion service which will compute FK/IK using the kinematics file.
+    For Cartesian motion (move_to_position, get_end_position), use the
+    motion service directly. This arm provides kinematics via get_kinematics()
+    which enables the motion service to compute FK/IK.
 
     Configuration attributes:
         usb_port (str, required): Serial port path (e.g., "/dev/ttyUSB0")
@@ -158,11 +159,20 @@ class Viperx300s(Arm, EasyResource):
     ) -> Pose:
         """Get end effector position.
 
-        NOTE: This requires forward kinematics calculation. Use Viam's
-        motion service which computes FK from joint positions + kinematics.
+        NOTE: This arm provides kinematics via get_kinematics() which enables
+        the motion service to compute FK/IK. For Cartesian operations, use
+        the motion service directly:
+
+            from viam.services.motion import Motion
+            motion = Motion.from_robot(robot, "builtin")
+            pose = await motion.get_pose(
+                component_name="arm-1",
+                destination_frame="world"
+            )
         """
         raise NotImplementedError(
-            "get_end_position requires FK solver. Use Viam motion service."
+            "get_end_position requires FK solver. "
+            "Use motion service: motion.get_pose(component_name='arm-1', destination_frame='world')"
         )
 
     async def move_to_position(
@@ -175,11 +185,21 @@ class Viperx300s(Arm, EasyResource):
     ) -> None:
         """Move to Cartesian position.
 
-        NOTE: This requires inverse kinematics. Use Viam's motion service
-        for Cartesian motion planning.
+        NOTE: This arm provides kinematics via get_kinematics() which enables
+        the motion service to compute FK/IK. For Cartesian operations, use
+        the motion service directly:
+
+            from viam.services.motion import Motion
+            from viam.proto.common import PoseInFrame
+            motion = Motion.from_robot(robot, "builtin")
+            await motion.move(
+                component_name="arm-1",
+                destination=PoseInFrame(reference_frame="world", pose=target_pose)
+            )
         """
         raise NotImplementedError(
-            "move_to_position requires IK solver. Use Viam motion service."
+            "move_to_position requires IK solver. "
+            "Use motion service: motion.move(component_name='arm-1', destination=PoseInFrame(...))"
         )
 
     async def get_joint_positions(

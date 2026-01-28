@@ -22,8 +22,9 @@ from dynamixel.conversions import degrees_to_radians, radians_to_degrees
 
 
 # Gripper position constants (in degrees)
-GRIPPER_OPEN_POSITION = 45.0    # Fully open
-GRIPPER_CLOSE_POSITION = -20.0  # Fully closed
+# ViperX-300s gripper motor range is approximately -45 to 85 degrees
+GRIPPER_OPEN_POSITION = 85.0     # Fully open (wider)
+GRIPPER_CLOSE_POSITION = -45.0   # Fully closed (narrower)
 
 
 class Viperx300sGripper(Gripper, EasyResource):
@@ -242,8 +243,14 @@ class Viperx300sGripper(Gripper, EasyResource):
 
         Supported commands:
             {"get_position": true} - Get current gripper position in degrees
-            {"set_position": <float>} - Set gripper position in degrees
+            {"set_position": <float>} - Set gripper position in degrees (range: ~-45 to 85)
+                -45° = fully closed, 85° = fully open. Values outside this range
+                may be clamped by motor limits.
             {"enable_torque": true/false} - Enable/disable gripper torque
+                When enabled: Motor actively holds position, resists external forces,
+                    and responds to position commands (open/grab/set_position).
+                When disabled: Motor is relaxed and free to move manually.
+                    Useful for manual positioning, teaching, or safety release.
         """
         if self._driver is None:
             raise RuntimeError("Gripper not initialized")
