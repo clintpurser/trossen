@@ -139,9 +139,12 @@ class DynamixelDriver:
     def _clear_port(self) -> None:
         """Clear any stale port state by resetting the is_using flag."""
         if self._port_handler is not None:
-            # The SDK's is_using_ is private, but we can clear it by
-            # waiting briefly if the port appears busy
-            self._port_handler.is_using_ = False
+            # Try to clear the SDK's internal is_using flag if it exists
+            try:
+                self._port_handler.is_using_ = False
+            except AttributeError:
+                # Attribute doesn't exist in this version of the SDK
+                pass
 
     def enable_torque(self, motor_ids: Optional[List[int]] = None) -> None:
         """Enable torque on specified motors.
