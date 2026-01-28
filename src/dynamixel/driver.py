@@ -41,6 +41,9 @@ class DynamixelError(Exception):
 _driver_instances: Dict[str, "DynamixelDriver"] = {}
 _driver_lock = threading.Lock()
 
+import logging
+_logger = logging.getLogger("dynamixel.driver")
+
 
 def get_driver(port: str, baud_rate: int) -> "DynamixelDriver":
     """Get or create a singleton driver instance for a port.
@@ -51,9 +54,14 @@ def get_driver(port: str, baud_rate: int) -> "DynamixelDriver":
     global _driver_instances
     with _driver_lock:
         if port not in _driver_instances:
+            _logger.info(f"Creating new driver instance for {port}")
             driver = DynamixelDriver(port, baud_rate)
             driver.open()
             _driver_instances[port] = driver
+            _logger.info(f"Driver created: id={id(driver)}, lock_id={id(driver._lock)}")
+        else:
+            driver = _driver_instances[port]
+            _logger.info(f"Returning existing driver: id={id(driver)}, lock_id={id(driver._lock)}")
         return _driver_instances[port]
 
 
@@ -197,7 +205,9 @@ class DynamixelDriver:
         Raises:
             DynamixelError: If communication fails
         """
+        _logger.debug(f"read_joint_positions called, driver_id={id(self)}, acquiring lock...")
         with self._lock:
+            _logger.debug(f"Lock acquired, port is_using_={getattr(self._port_handler, 'is_using_', 'N/A')}")
             self._check_open()
             self._clear_port()  # Clear any stale port state
 
@@ -211,12 +221,14 @@ class DynamixelDriver:
                 # Retry logic for transient errors
                 last_error = None
                 for attempt in range(MAX_RETRIES):
+                    _logger.debug(f"Reading motor {primary_id}, attempt {attempt + 1}, is_using_={getattr(self._port_handler, 'is_using_', 'N/A')}")
                     data, result, error = self._packet_handler.read4ByteTxRx(
                         self._port_handler, primary_id, ADDR_PRESENT_POSITION
                     )
                     if result == COMM_SUCCESS and error == 0:
                         break
                     last_error = self._packet_handler.getTxRxResult(result)
+                    _logger.warning(f"Motor {primary_id} read failed: {last_error}, is_using_={getattr(self._port_handler, 'is_using_', 'N/A')}")
                     if attempt < MAX_RETRIES - 1:
                         self._clear_port()
                         time.sleep(RETRY_DELAY)
