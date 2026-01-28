@@ -122,13 +122,20 @@ class Viperx300s(Arm, EasyResource):
 
         # Extract configuration
         self._usb_port = attrs["usb_port"].string_value
-        baud_rate = int(attrs.get("baud_rate", {}).number_value or DEFAULT_BAUD_RATE)
-        profile_velocity = int(
-            attrs.get("profile_velocity", {}).number_value or DEFAULT_PROFILE_VELOCITY
+        baud_rate = (
+            int(attrs["baud_rate"].number_value)
+            if "baud_rate" in attrs
+            else DEFAULT_BAUD_RATE
         )
-        profile_acceleration = int(
-            attrs.get("profile_acceleration", {}).number_value
-            or DEFAULT_PROFILE_ACCELERATION
+        profile_velocity = (
+            int(attrs["profile_velocity"].number_value)
+            if "profile_velocity" in attrs
+            else DEFAULT_PROFILE_VELOCITY
+        )
+        profile_acceleration = (
+            int(attrs["profile_acceleration"].number_value)
+            if "profile_acceleration" in attrs
+            else DEFAULT_PROFILE_ACCELERATION
         )
 
         # Create and open new driver

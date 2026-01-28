@@ -103,11 +103,15 @@ class Viperx300sGripper(Gripper, EasyResource):
 
         # Extract configuration
         self._usb_port = attrs["usb_port"].string_value
-        self._open_position = float(
-            attrs.get("open_position", {}).number_value or GRIPPER_OPEN_POSITION
+        self._open_position = (
+            float(attrs["open_position"].number_value)
+            if "open_position" in attrs
+            else GRIPPER_OPEN_POSITION
         )
-        self._close_position = float(
-            attrs.get("close_position", {}).number_value or GRIPPER_CLOSE_POSITION
+        self._close_position = (
+            float(attrs["close_position"].number_value)
+            if "close_position" in attrs
+            else GRIPPER_CLOSE_POSITION
         )
 
         # Try to get shared driver from arm component
@@ -120,8 +124,10 @@ class Viperx300sGripper(Gripper, EasyResource):
             )
         else:
             # Create our own driver if arm hasn't initialized yet
-            baud_rate = int(
-                attrs.get("baud_rate", {}).number_value or DEFAULT_BAUD_RATE
+            baud_rate = (
+                int(attrs["baud_rate"].number_value)
+                if "baud_rate" in attrs
+                else DEFAULT_BAUD_RATE
             )
             self._driver = DynamixelDriver(self._usb_port, baud_rate)
             self._owns_driver = True
