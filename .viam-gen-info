@@ -1,0 +1,13 @@
+{
+  "module_name": "trossen",
+  "visibility": "public",
+  "namespace": "clint",
+  "language": "python",
+  "resource_type": "component",
+  "resource_subtype": "arm",
+  "model_name": "viperx-300s",
+  "initialize_git": false,
+  "generator_version": "0.1.0",
+  "generated_on": "2026-01-28T17:30:33.138985Z",
+  "module_readme_link": "README.md"
+}
