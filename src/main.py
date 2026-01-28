@@ -5,12 +5,13 @@ import logging
 import sys
 import os
 
-# Configure logging early
+# Configure logging - set root to WARNING, our logger to INFO
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.WARNING,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("viperx")
+logger.setLevel(logging.INFO)
 
 # Add src to path for local imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -20,15 +21,15 @@ logger.info("Starting ViperX-300s module")
 try:
     from viam.module.module import Module
 
-    logger.debug("Importing Viperx300s...")
+    logger.info("Importing Viperx300s...")
     from models.viperx_300s import Viperx300s
 
-    logger.debug(f"Viperx300s imported, MODEL={Viperx300s.MODEL}")
+    logger.info(f"Viperx300s imported, MODEL={Viperx300s.MODEL}")
 
-    logger.debug("Importing Viperx300sGripper...")
+    logger.info("Importing Viperx300sGripper...")
     from models.viperx_300s_gripper import Viperx300sGripper
 
-    logger.debug(f"Viperx300sGripper imported, MODEL={Viperx300sGripper.MODEL}")
+    logger.info(f"Viperx300sGripper imported, MODEL={Viperx300sGripper.MODEL}")
 
 except Exception as e:
     logger.error(f"Failed to import modules: {e}", exc_info=True)
