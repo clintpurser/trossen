@@ -19,7 +19,7 @@ from .conversions import (
     degrees_to_radians,
     validate_joint_limits,
 )
-from .driver import DynamixelDriver, DynamixelError
+from .driver import DynamixelDriver, DynamixelError, get_driver, close_driver
 
 __all__ = [
     "PROTOCOL_VERSION",
@@ -39,4 +39,6 @@ __all__ = [
     "validate_joint_limits",
     "DynamixelDriver",
     "DynamixelError",
+    "get_driver",
+    "close_driver",
 ]

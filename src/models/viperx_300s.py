@@ -17,7 +17,6 @@ from viam.utils import ValueTypes
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dynamixel import (
-    DynamixelDriver,
     DynamixelError,
     DEFAULT_BAUD_RATE,
     VIPERX_300S_JOINTS,
@@ -25,6 +24,7 @@ from dynamixel import (
     DEFAULT_PROFILE_VELOCITY,
     DEFAULT_PROFILE_ACCELERATION,
 )
+from dynamixel.driver import get_driver, close_driver
 from dynamixel.conversions import (
     radians_to_degrees,
     degrees_to_radians,
@@ -51,12 +51,9 @@ class Viperx300s(Arm, EasyResource):
 
     MODEL: ClassVar[Model] = Model(ModelFamily("clint", "trossen"), "viperx-300s")
 
-    # Shared driver instance for gripper to use
-    _shared_drivers: ClassVar[Dict[str, DynamixelDriver]] = {}
-
     def __init__(self, name: str):
         super().__init__(name)
-        self._driver: Optional[DynamixelDriver] = None
+        self._driver = None
         self._kinematics_data: Optional[bytes] = None
         self._usb_port: str = ""
 
@@ -108,18 +105,6 @@ class Viperx300s(Arm, EasyResource):
         """Reconfigure the arm with new settings."""
         attrs = config.attributes.fields
 
-        # Close existing driver if any
-        if self._driver is not None:
-            try:
-                self._driver.disable_torque()
-                self._driver.close()
-            except Exception as e:
-                self.logger.warning(f"Error closing driver during reconfigure: {e}")
-
-            # Remove from shared drivers
-            if self._usb_port in self._shared_drivers:
-                del self._shared_drivers[self._usb_port]
-
         # Extract configuration
         self._usb_port = attrs["usb_port"].string_value
         baud_rate = (
@@ -138,20 +123,15 @@ class Viperx300s(Arm, EasyResource):
             else DEFAULT_PROFILE_ACCELERATION
         )
 
-        # Create and open new driver
-        self._driver = DynamixelDriver(self._usb_port, baud_rate)
+        # Get singleton driver instance (creates if needed)
         try:
-            self._driver.open()
+            self._driver = get_driver(self._usb_port, baud_rate)
             self._driver.enable_torque()
             self._driver.set_profile_velocity(profile_velocity)
             self._driver.set_profile_acceleration(profile_acceleration)
             self.logger.info(
                 f"ViperX-300s connected on {self._usb_port} at {baud_rate} baud"
             )
-
-            # Store driver for gripper to share
-            self._shared_drivers[self._usb_port] = self._driver
-
         except DynamixelError as e:
             self.logger.error(f"Failed to initialize arm: {e}")
             raise
@@ -168,14 +148,6 @@ class Viperx300s(Arm, EasyResource):
         except FileNotFoundError:
             self.logger.warning(f"Kinematics file not found: {KINEMATICS_FILE}")
             self._kinematics_data = b"{}"
-
-    @classmethod
-    def get_shared_driver(cls, usb_port: str) -> Optional[DynamixelDriver]:
-        """Get shared driver instance for a given port.
-
-        Used by gripper component to share the same connection.
-        """
-        return cls._shared_drivers.get(usb_port)
 
     async def get_end_position(
         self,
@@ -377,13 +349,8 @@ class Viperx300s(Arm, EasyResource):
         if self._driver is not None:
             try:
                 self._driver.disable_torque()
-                self._driver.close()
                 self.logger.info("ViperX-300s arm closed")
             except Exception as e:
                 self.logger.warning(f"Error during close: {e}")
-
-            # Remove from shared drivers
-            if self._usb_port in self._shared_drivers:
-                del self._shared_drivers[self._usb_port]
-
+            # Don't close the singleton driver - gripper may still need it
             self._driver = None

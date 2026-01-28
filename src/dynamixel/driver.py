@@ -1,7 +1,7 @@
 """Dynamixel SDK driver for ViperX-300s arm."""
 
 import threading
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from dynamixel_sdk import (
     PortHandler,
@@ -30,6 +30,38 @@ class DynamixelError(Exception):
     """Base exception for Dynamixel communication errors."""
 
     pass
+
+
+# Module-level singleton storage for drivers by port
+_driver_instances: Dict[str, "DynamixelDriver"] = {}
+_driver_lock = threading.Lock()
+
+
+def get_driver(port: str, baud_rate: int) -> "DynamixelDriver":
+    """Get or create a singleton driver instance for a port.
+
+    This ensures only one driver exists per serial port, preventing
+    conflicts between arm and gripper components.
+    """
+    global _driver_instances
+    with _driver_lock:
+        if port not in _driver_instances:
+            driver = DynamixelDriver(port, baud_rate)
+            driver.open()
+            _driver_instances[port] = driver
+        return _driver_instances[port]
+
+
+def close_driver(port: str) -> None:
+    """Close and remove a driver instance."""
+    global _driver_instances
+    with _driver_lock:
+        if port in _driver_instances:
+            try:
+                _driver_instances[port].close()
+            except Exception:
+                pass
+            del _driver_instances[port]
 
 
 class DynamixelDriver:

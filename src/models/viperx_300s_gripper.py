@@ -16,9 +16,9 @@ from viam.utils import ValueTypes
 # Add src to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from dynamixel import DynamixelDriver, DynamixelError, DEFAULT_BAUD_RATE
+from dynamixel import DynamixelError, DEFAULT_BAUD_RATE
+from dynamixel.driver import get_driver
 from dynamixel.conversions import degrees_to_radians, radians_to_degrees
-from .viperx_300s import Viperx300s
 
 
 # Gripper position constants (in degrees)
@@ -45,8 +45,7 @@ class Viperx300sGripper(Gripper, EasyResource):
 
     def __init__(self, name: str):
         super().__init__(name)
-        self._driver: Optional[DynamixelDriver] = None
-        self._owns_driver: bool = False  # Whether we created the driver
+        self._driver = None
         self._usb_port: str = ""
         self._open_position: float = GRIPPER_OPEN_POSITION
         self._close_position: float = GRIPPER_CLOSE_POSITION
@@ -93,14 +92,6 @@ class Viperx300sGripper(Gripper, EasyResource):
         """Reconfigure the gripper with new settings."""
         attrs = config.attributes.fields
 
-        # Close existing driver if we own it
-        if self._driver is not None and self._owns_driver:
-            try:
-                self._driver.disable_gripper_torque()
-                self._driver.close()
-            except Exception as e:
-                self.logger.warning(f"Error closing driver during reconfigure: {e}")
-
         # Extract configuration
         self._usb_port = attrs["usb_port"].string_value
         self._open_position = (
@@ -114,31 +105,20 @@ class Viperx300sGripper(Gripper, EasyResource):
             else GRIPPER_CLOSE_POSITION
         )
 
-        # Try to get shared driver from arm component
-        self._driver = Viperx300s.get_shared_driver(self._usb_port)
-
-        if self._driver is not None:
-            self._owns_driver = False
+        # Get singleton driver instance (shared with arm)
+        baud_rate = (
+            int(attrs["baud_rate"].number_value)
+            if "baud_rate" in attrs
+            else DEFAULT_BAUD_RATE
+        )
+        try:
+            self._driver = get_driver(self._usb_port, baud_rate)
             self.logger.info(
-                f"ViperX-300s gripper sharing driver on {self._usb_port}"
+                f"ViperX-300s gripper using driver on {self._usb_port}"
             )
-        else:
-            # Create our own driver if arm hasn't initialized yet
-            baud_rate = (
-                int(attrs["baud_rate"].number_value)
-                if "baud_rate" in attrs
-                else DEFAULT_BAUD_RATE
-            )
-            self._driver = DynamixelDriver(self._usb_port, baud_rate)
-            self._owns_driver = True
-            try:
-                self._driver.open()
-                self.logger.info(
-                    f"ViperX-300s gripper created own driver on {self._usb_port}"
-                )
-            except DynamixelError as e:
-                self.logger.error(f"Failed to initialize gripper: {e}")
-                raise
+        except DynamixelError as e:
+            self.logger.error(f"Failed to get driver for gripper: {e}")
+            raise
 
         # Enable gripper torque
         try:
@@ -302,12 +282,7 @@ class Viperx300sGripper(Gripper, EasyResource):
             try:
                 self._driver.disable_gripper_torque()
                 self.logger.info("ViperX-300s gripper closed")
-
-                # Only close driver if we own it
-                if self._owns_driver:
-                    self._driver.close()
-
             except Exception as e:
                 self.logger.warning(f"Error during close: {e}")
-
+            # Don't close the singleton driver - arm may still need it
             self._driver = None
