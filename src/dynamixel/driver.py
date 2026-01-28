@@ -145,14 +145,20 @@ class DynamixelDriver:
             raise DynamixelError("Driver not open")
 
     def _clear_port(self) -> None:
-        """Clear any stale port state by resetting the is_using flag."""
+        """Clear any stale port state by resetting the is_using flag and flushing."""
         if self._port_handler is not None:
             # Try to clear the SDK's internal is_using flag if it exists
             try:
                 self._port_handler.is_using_ = False
             except AttributeError:
-                # Attribute doesn't exist in this version of the SDK
                 pass
+            # Also try to clear the port buffer
+            try:
+                self._port_handler.clearPort()
+            except (AttributeError, Exception):
+                pass
+            # Small delay to let the port settle
+            time.sleep(0.001)
 
     def enable_torque(self, motor_ids: Optional[List[int]] = None) -> None:
         """Enable torque on specified motors.
@@ -165,11 +171,19 @@ class DynamixelDriver:
 
         with self._lock:
             self._check_open()
+            self._clear_port()
             for motor_id in motor_ids:
-                result, error = self._packet_handler.write1ByteTxRx(
-                    self._port_handler, motor_id, ADDR_TORQUE_ENABLE, 1
-                )
-                if result != COMM_SUCCESS:
+                # Retry logic for write operations too
+                for attempt in range(MAX_RETRIES):
+                    result, error = self._packet_handler.write1ByteTxRx(
+                        self._port_handler, motor_id, ADDR_TORQUE_ENABLE, 1
+                    )
+                    if result == COMM_SUCCESS:
+                        break
+                    if attempt < MAX_RETRIES - 1:
+                        self._clear_port()
+                        time.sleep(RETRY_DELAY)
+                else:
                     raise DynamixelError(
                         f"Failed to enable torque on motor {motor_id}: "
                         f"{self._packet_handler.getTxRxResult(result)}"
@@ -186,11 +200,18 @@ class DynamixelDriver:
 
         with self._lock:
             self._check_open()
+            self._clear_port()
             for motor_id in motor_ids:
-                result, error = self._packet_handler.write1ByteTxRx(
-                    self._port_handler, motor_id, ADDR_TORQUE_ENABLE, 0
-                )
-                if result != COMM_SUCCESS:
+                for attempt in range(MAX_RETRIES):
+                    result, error = self._packet_handler.write1ByteTxRx(
+                        self._port_handler, motor_id, ADDR_TORQUE_ENABLE, 0
+                    )
+                    if result == COMM_SUCCESS:
+                        break
+                    if attempt < MAX_RETRIES - 1:
+                        self._clear_port()
+                        time.sleep(RETRY_DELAY)
+                else:
                     raise DynamixelError(
                         f"Failed to disable torque on motor {motor_id}: "
                         f"{self._packet_handler.getTxRxResult(result)}"
@@ -259,6 +280,7 @@ class DynamixelDriver:
 
         with self._lock:
             self._check_open()
+            self._clear_port()
 
             # Write positions individually for reliability
             for joint_idx, position in enumerate(positions):
@@ -267,10 +289,16 @@ class DynamixelDriver:
 
                 # Write to all motors for this joint (handles dual-motor joints)
                 for motor_id in config.motor_ids:
-                    result, error = self._packet_handler.write4ByteTxRx(
-                        self._port_handler, motor_id, ADDR_GOAL_POSITION, ticks
-                    )
-                    if result != COMM_SUCCESS:
+                    for attempt in range(MAX_RETRIES):
+                        result, error = self._packet_handler.write4ByteTxRx(
+                            self._port_handler, motor_id, ADDR_GOAL_POSITION, ticks
+                        )
+                        if result == COMM_SUCCESS:
+                            break
+                        if attempt < MAX_RETRIES - 1:
+                            self._clear_port()
+                            time.sleep(RETRY_DELAY)
+                    else:
                         raise DynamixelError(
                             f"Failed to write position for motor {motor_id}: "
                             f"{self._packet_handler.getTxRxResult(result)}"
@@ -321,11 +349,18 @@ class DynamixelDriver:
 
         with self._lock:
             self._check_open()
+            self._clear_port()
             for motor_id in motor_ids:
-                result, error = self._packet_handler.write4ByteTxRx(
-                    self._port_handler, motor_id, ADDR_PROFILE_VELOCITY, velocity
-                )
-                if result != COMM_SUCCESS:
+                for attempt in range(MAX_RETRIES):
+                    result, error = self._packet_handler.write4ByteTxRx(
+                        self._port_handler, motor_id, ADDR_PROFILE_VELOCITY, velocity
+                    )
+                    if result == COMM_SUCCESS:
+                        break
+                    if attempt < MAX_RETRIES - 1:
+                        self._clear_port()
+                        time.sleep(RETRY_DELAY)
+                else:
                     raise DynamixelError(
                         f"Failed to set velocity on motor {motor_id}"
                     )
@@ -344,11 +379,18 @@ class DynamixelDriver:
 
         with self._lock:
             self._check_open()
+            self._clear_port()
             for motor_id in motor_ids:
-                result, error = self._packet_handler.write4ByteTxRx(
-                    self._port_handler, motor_id, ADDR_PROFILE_ACCELERATION, acceleration
-                )
-                if result != COMM_SUCCESS:
+                for attempt in range(MAX_RETRIES):
+                    result, error = self._packet_handler.write4ByteTxRx(
+                        self._port_handler, motor_id, ADDR_PROFILE_ACCELERATION, acceleration
+                    )
+                    if result == COMM_SUCCESS:
+                        break
+                    if attempt < MAX_RETRIES - 1:
+                        self._clear_port()
+                        time.sleep(RETRY_DELAY)
+                else:
                     raise DynamixelError(
                         f"Failed to set acceleration on motor {motor_id}"
                     )
@@ -398,12 +440,19 @@ class DynamixelDriver:
         """
         with self._lock:
             self._check_open()
+            self._clear_port()
 
             ticks = radians_to_ticks(position)
-            result, error = self._packet_handler.write4ByteTxRx(
-                self._port_handler, GRIPPER_MOTOR_ID, ADDR_GOAL_POSITION, ticks
-            )
-            if result != COMM_SUCCESS:
+            for attempt in range(MAX_RETRIES):
+                result, error = self._packet_handler.write4ByteTxRx(
+                    self._port_handler, GRIPPER_MOTOR_ID, ADDR_GOAL_POSITION, ticks
+                )
+                if result == COMM_SUCCESS:
+                    break
+                if attempt < MAX_RETRIES - 1:
+                    self._clear_port()
+                    time.sleep(RETRY_DELAY)
+            else:
                 raise DynamixelError(
                     f"Failed to write gripper position: "
                     f"{self._packet_handler.getTxRxResult(result)}"
