@@ -224,6 +224,33 @@ class Viperx300sGripper(Gripper, EasyResource):
             self.logger.error(f"Failed to check gripper moving status: {e}")
             raise
 
+    async def get_kinematics(
+        self,
+        *,
+        extra: Optional[Dict[str, Any]] = None,
+        timeout: Optional[float] = None,
+        **kwargs,
+    ) -> Tuple[bytes, str]:
+        """Get kinematics information (not applicable for gripper)."""
+        return (b"", "")
+
+    async def is_holding_something(
+        self,
+        *,
+        extra: Optional[Dict[str, Any]] = None,
+        timeout: Optional[float] = None,
+        **kwargs,
+    ) -> bool:
+        """Check if gripper is holding something.
+
+        Returns True if gripper didn't fully close (object detected).
+        This is a simple implementation - proper detection would require
+        monitoring motor current/load.
+        """
+        # For now, always return False - proper implementation would
+        # check if gripper position is greater than close_position
+        return False
+
     async def do_command(
         self,
         command: Mapping[str, ValueTypes],

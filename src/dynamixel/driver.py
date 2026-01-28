@@ -58,10 +58,7 @@ class DynamixelDriver:
         self._baud_rate = baud_rate
         self._port_handler: Optional[PortHandler] = None
         self._packet_handler: Optional[PacketHandler] = None
-        self._sync_read_position: Optional[GroupSyncRead] = None
-        self._sync_read_moving: Optional[GroupSyncRead] = None
-        self._sync_write_position: Optional[GroupSyncWrite] = None
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()  # Use RLock for reentrant locking
         self._is_open = False
 
     @property
@@ -89,40 +86,6 @@ class DynamixelDriver:
                 self._port_handler.closePort()
                 raise DynamixelError(f"Failed to set baud rate {self._baud_rate}")
 
-            # Initialize sync read for positions (only primary motors, one per joint)
-            self._sync_read_position = GroupSyncRead(
-                self._port_handler,
-                self._packet_handler,
-                ADDR_PRESENT_POSITION,
-                LEN_PRESENT_POSITION,
-            )
-            for motor_id in PRIMARY_MOTOR_IDS:
-                if not self._sync_read_position.addParam(motor_id):
-                    raise DynamixelError(
-                        f"Failed to add motor {motor_id} to position sync read"
-                    )
-
-            # Initialize sync read for moving status
-            self._sync_read_moving = GroupSyncRead(
-                self._port_handler,
-                self._packet_handler,
-                ADDR_MOVING,
-                LEN_MOVING,
-            )
-            for motor_id in PRIMARY_MOTOR_IDS:
-                if not self._sync_read_moving.addParam(motor_id):
-                    raise DynamixelError(
-                        f"Failed to add motor {motor_id} to moving sync read"
-                    )
-
-            # Initialize sync write for goal positions (all motors including shadows)
-            self._sync_write_position = GroupSyncWrite(
-                self._port_handler,
-                self._packet_handler,
-                ADDR_GOAL_POSITION,
-                LEN_GOAL_POSITION,
-            )
-
             self._is_open = True
 
     def close(self) -> None:
@@ -130,13 +93,6 @@ class DynamixelDriver:
         with self._lock:
             if not self._is_open:
                 return
-
-            if self._sync_read_position:
-                self._sync_read_position.clearParam()
-            if self._sync_read_moving:
-                self._sync_read_moving.clearParam()
-            if self._sync_write_position:
-                self._sync_write_position.clearParam()
 
             if self._port_handler:
                 self._port_handler.closePort()
@@ -202,8 +158,22 @@ class DynamixelDriver:
         with self._lock:
             self._check_open()
 
+            # Create fresh sync read for this operation
+            sync_read = GroupSyncRead(
+                self._port_handler,
+                self._packet_handler,
+                ADDR_PRESENT_POSITION,
+                LEN_PRESENT_POSITION,
+            )
+
+            for motor_id in PRIMARY_MOTOR_IDS:
+                if not sync_read.addParam(motor_id):
+                    raise DynamixelError(
+                        f"Failed to add motor {motor_id} to sync read"
+                    )
+
             # Perform sync read
-            result = self._sync_read_position.txRxPacket()
+            result = sync_read.txRxPacket()
             if result != COMM_SUCCESS:
                 raise DynamixelError(
                     f"Sync read failed: {self._packet_handler.getTxRxResult(result)}"
@@ -215,17 +185,18 @@ class DynamixelDriver:
                 primary_id = config.motor_ids[0]
 
                 # Check if data is available
-                if not self._sync_read_position.isAvailable(
+                if not sync_read.isAvailable(
                     primary_id, ADDR_PRESENT_POSITION, LEN_PRESENT_POSITION
                 ):
                     raise DynamixelError(f"No data available for motor {primary_id}")
 
                 # Get raw position
-                ticks = self._sync_read_position.getData(
+                ticks = sync_read.getData(
                     primary_id, ADDR_PRESENT_POSITION, LEN_PRESENT_POSITION
                 )
                 positions.append(ticks_to_radians(ticks))
 
+            sync_read.clearParam()
             return positions
 
     def write_joint_positions(self, positions: List[float]) -> None:
@@ -246,7 +217,14 @@ class DynamixelDriver:
 
         with self._lock:
             self._check_open()
-            self._sync_write_position.clearParam()
+
+            # Create fresh sync write for this operation
+            sync_write = GroupSyncWrite(
+                self._port_handler,
+                self._packet_handler,
+                ADDR_GOAL_POSITION,
+                LEN_GOAL_POSITION,
+            )
 
             for joint_idx, position in enumerate(positions):
                 config = VIPERX_300S_JOINTS[joint_idx]
@@ -262,18 +240,20 @@ class DynamixelDriver:
 
                 # Write to all motors for this joint (handles dual-motor joints)
                 for motor_id in config.motor_ids:
-                    success = self._sync_write_position.addParam(motor_id, param)
+                    success = sync_write.addParam(motor_id, param)
                     if not success:
                         raise DynamixelError(
                             f"Failed to add param for motor {motor_id}"
                         )
 
             # Transmit
-            result = self._sync_write_position.txPacket()
+            result = sync_write.txPacket()
             if result != COMM_SUCCESS:
                 raise DynamixelError(
                     f"Sync write failed: {self._packet_handler.getTxRxResult(result)}"
                 )
+
+            sync_write.clearParam()
 
     def is_moving(self) -> bool:
         """Check if any motor is currently moving.
@@ -284,23 +264,16 @@ class DynamixelDriver:
         with self._lock:
             self._check_open()
 
-            result = self._sync_read_moving.txRxPacket()
-            if result != COMM_SUCCESS:
-                raise DynamixelError(
-                    f"Sync read moving failed: "
-                    f"{self._packet_handler.getTxRxResult(result)}"
-                )
-
+            # Read moving status from each motor individually
+            # This is more reliable than sync read for status registers
             for motor_id in PRIMARY_MOTOR_IDS:
-                if not self._sync_read_moving.isAvailable(
-                    motor_id, ADDR_MOVING, LEN_MOVING
-                ):
-                    continue
-
-                moving = self._sync_read_moving.getData(
-                    motor_id, ADDR_MOVING, LEN_MOVING
+                result, error = self._packet_handler.read1ByteTxRx(
+                    self._port_handler, motor_id, ADDR_MOVING
                 )
-                if moving:
+                if error != 0:
+                    # Skip motors that fail to respond
+                    continue
+                if result:
                     return True
 
             return False
