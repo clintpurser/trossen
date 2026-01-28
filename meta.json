@@ -2,7 +2,17 @@
   "$schema": "https://dl.viam.dev/module.schema.json",
   "module_id": "clint:trossen",
   "visibility": "public",
-  "url": "",
+  "url": "https://github.com/clintpurser/trossen",
+  "models": [
+    {
+      "api": "rdk:component:arm",
+      "model": "clint:trossen:viperx-300s"
+    },
+    {
+      "api": "rdk:component:gripper",
+      "model": "clint:trossen:viperx-300s-gripper"
+    }
+  ],
   "description": "Viam module for Trossen ViperX-300s arm and gripper",
   "applications": null,
   "markdown_link": "README.md",
