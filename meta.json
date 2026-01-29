@@ -15,10 +15,10 @@
   ],
   "description": "Viam module for Trossen ViperX-300s arm and gripper",
   "markdown_link": "README.md",
-  "entrypoint": "trossen",
+  "entrypoint": "run.sh",
   "build": {
     "build": "./build.sh",
-    "path": "trossen",
+    "path": "bin/module.tar.gz",
     "arch": [
       "linux/amd64",
       "linux/arm64",
