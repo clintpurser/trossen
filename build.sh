@@ -1,18 +1,14 @@
-#!/bin/sh
-cd `dirname $0`
+#!/bin/bash
+set -e
 
-# Create a virtual environment to run our code
-VENV_NAME="venv"
-PYTHON="$VENV_NAME/bin/python"
+cd "$(dirname "$0")"
 
-if ! $PYTHON -m pip install pyinstaller -Uqq; then
-    exit 1
-fi
+# Build for the target platform
+GOOS=${GOOS:-$(go env GOOS)}
+GOARCH=${GOARCH:-$(go env GOARCH)}
 
-$PYTHON -m PyInstaller --onefile \
-    --hidden-import="googleapiclient" \
-    --hidden-import="dynamixel_sdk" \
-    --add-data "src/kinematics:kinematics" \
-    src/main.py
+echo "Building trossen module for $GOOS/$GOARCH..."
 
-tar -czvf dist/archive.tar.gz meta.json ./dist/main
+go build -o trossen -ldflags="-s -w" .
+
+echo "Build complete: trossen"

@@ -1,0 +1,172 @@
+{
+  "name": "vx300s",
+  "links": [
+    {
+      "id": "base_link",
+      "parent": "world",
+      "translation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    },
+    {
+      "id": "shoulder_link",
+      "parent": "waist",
+      "translation": {
+        "x": 0,
+        "y": 0,
+        "z": 79.0
+      },
+      "geometry": {
+        "type": "box",
+        "x": 100,
+        "y": 100,
+        "z": 79
+      }
+    },
+    {
+      "id": "upper_arm_link",
+      "parent": "shoulder",
+      "translation": {
+        "x": 0,
+        "y": 0,
+        "z": 48.05
+      },
+      "geometry": {
+        "type": "box",
+        "x": 60,
+        "y": 60,
+        "z": 300
+      }
+    },
+    {
+      "id": "forearm_link",
+      "parent": "elbow",
+      "translation": {
+        "x": 59.55,
+        "y": 0,
+        "z": 300.0
+      },
+      "geometry": {
+        "type": "box",
+        "x": 50,
+        "y": 50,
+        "z": 200
+      }
+    },
+    {
+      "id": "wrist_link",
+      "parent": "forearm_roll",
+      "translation": {
+        "x": 200.0,
+        "y": 0,
+        "z": 0
+      },
+      "geometry": {
+        "type": "box",
+        "x": 60,
+        "y": 60,
+        "z": 100
+      }
+    },
+    {
+      "id": "gripper_link",
+      "parent": "wrist_angle",
+      "translation": {
+        "x": 100.0,
+        "y": 0,
+        "z": 0
+      },
+      "geometry": {
+        "type": "box",
+        "x": 50,
+        "y": 50,
+        "z": 65
+      }
+    },
+    {
+      "id": "ee_link",
+      "parent": "wrist_rotate",
+      "translation": {
+        "x": 69.744,
+        "y": 0,
+        "z": 0
+      }
+    }
+  ],
+  "joints": [
+    {
+      "id": "waist",
+      "type": "revolute",
+      "parent": "base_link",
+      "axis": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "min": -180,
+      "max": 180
+    },
+    {
+      "id": "shoulder",
+      "type": "revolute",
+      "parent": "shoulder_link",
+      "axis": {
+        "x": 0,
+        "y": 1,
+        "z": 0
+      },
+      "min": -110,
+      "max": 75
+    },
+    {
+      "id": "elbow",
+      "type": "revolute",
+      "parent": "upper_arm_link",
+      "axis": {
+        "x": 0,
+        "y": 1,
+        "z": 0
+      },
+      "min": -106,
+      "max": 97
+    },
+    {
+      "id": "forearm_roll",
+      "type": "revolute",
+      "parent": "forearm_link",
+      "axis": {
+        "x": 1,
+        "y": 0,
+        "z": 0
+      },
+      "min": -360,
+      "max": 360
+    },
+    {
+      "id": "wrist_angle",
+      "type": "revolute",
+      "parent": "wrist_link",
+      "axis": {
+        "x": 0,
+        "y": 1,
+        "z": 0
+      },
+      "min": -110,
+      "max": 130
+    },
+    {
+      "id": "wrist_rotate",
+      "type": "revolute",
+      "parent": "gripper_link",
+      "axis": {
+        "x": 1,
+        "y": 0,
+        "z": 0
+      },
+      "min": -360,
+      "max": 360
+    }
+  ]
+}
