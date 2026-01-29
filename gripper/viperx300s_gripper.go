@@ -5,6 +5,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/golang/geo/r3"
 	"github.com/pkg/errors"
 	"go.viam.com/rdk/components/gripper"
 	"go.viam.com/rdk/logging"
@@ -158,9 +159,15 @@ func (g *viperX300sGripper) IsMoving(ctx context.Context) (bool, error) {
 	return g.driver.IsGripperMoving()
 }
 
-// Geometries returns the geometries of the gripper (empty for now).
+// Geometries returns the geometries of the gripper.
 func (g *viperX300sGripper) Geometries(ctx context.Context, extra map[string]interface{}) ([]spatialmath.Geometry, error) {
-	return []spatialmath.Geometry{}, nil
+	// Create a simple box geometry for the gripper
+	// Approximate dimensions: 100mm x 70mm x 50mm
+	box, err := spatialmath.NewBox(spatialmath.NewZeroPose(), r3.Vector{X: 100, Y: 70, Z: 50}, g.Name().ShortName())
+	if err != nil {
+		return nil, err
+	}
+	return []spatialmath.Geometry{box}, nil
 }
 
 // ModelFrame returns nil as grippers don't have a kinematic model.
