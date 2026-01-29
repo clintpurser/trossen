@@ -1,5 +1,24 @@
 # Claude Notes for Trossen ViperX-300s Module
 
+## Cloud Build & Deployment
+
+### Trigger a cloud build
+1. Commit your changes
+2. Create a semantic version tag: `git tag v0.1.X`
+3. Push with tags: `git push origin main --tags`
+
+The GitHub Action (.github/workflows/deploy.yml) will automatically build and deploy to Viam registry.
+
+### Tag format
+- Supported: `v0.0.1`, `0.0.1`, `v0.0.1-rc1`
+- Pattern: `v?[0-9]+.[0-9]+.[0-9]+(-rc[0-9]+)?`
+
+### Check build status
+- GitHub Actions: https://github.com/clintpurser/trossen/actions
+- Viam Registry: https://app.viam.com/registry
+
+---
+
 ## Module Development
 
 ### Reloading the module (without restarting viam-server)
